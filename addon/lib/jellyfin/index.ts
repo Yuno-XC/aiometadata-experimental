@@ -31,6 +31,7 @@ import { artTag, imageTag, isWideTag } from './imageTags';
 import { buildEpisodes, buildSeasons, withSeasonAnimeIds, fetchCatalogPage, fetchMeta, fetchWindow, filterByIncludeTypes, includeTypesFilter, buildEpisode, findEpisodeVideo, knownCatalogLength, metaToBaseItem, pageChildren, pageEpisodes, recallArt, recallImages, rememberArt, rememberImages, sortNameFor, warmCatalogLengths, isLandscapeCatalog, showLandscape } from './items';
 import { dashedGuid, encodeJellyfinId, normaliseJellyfinId, parseStremioId, stremioIdFor } from './ids';
 import { coalesce, fetchStreams, fileFor, languageCode, languageName, mediaSourceFor, normaliseStreamBase, forgetDuration, placeholderMediaSource, recallDuration, recallFailure, recallIssued, recallStreams, rememberDuration, rememberFailure, rememberStreams, runtimeTicksFrom, streamClient, streamsState, streamUserAgent, toNotice, toPlayable, type StreamClient } from './streams';
+import { badgePacksForConfig } from './badgePacks';
 import { fetchAddonSubtitles, formatOf, pickSubtitles, recallOffered, rememberOffered, subtitleBody, subtitleCodecFor, subtitleExtensionOf, subtitleFormatFor, subtitleLanguage, type SubtitleTrack } from './subtitles';
 import { memoNextUp, resumeSnapshot, resumeUserData } from './resume';
 import { animeSequels } from './sequels';
@@ -359,8 +360,13 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
 
   // --- Handshake ---
 
-  router.get('/System/Info/Public', (req: any, res: any) => {
-    res.json({ ...publicSystemInfo(serverIdFor(req.params.userUUID), baseFor(req)), aiostreams: extensionInfo(localAddress(req)) });
+  router.get('/System/Info/Public', async (req: any, res: any) => {
+    const config = await database.getUserConfig(req.params.userUUID).catch(() => null);
+    const packs = await badgePacksForConfig(config);
+    res.json({
+      ...publicSystemInfo(serverIdFor(req.params.userUUID), baseFor(req)),
+      aiostreams: extensionInfo(localAddress(req), packs),
+    });
   });
 
   router.all('/System/Ping', (_req: any, res: any) => {
@@ -522,8 +528,13 @@ export function createJellyfinRouter(options: { loginRateLimit?: any } = {}): an
 
   router.use(requireAuth);
 
-  router.get('/System/Info', (req: any, res: any) => {
-    res.json({ ...systemInfo(serverIdFor(req.params.userUUID), baseFor(req)), aiostreams: extensionInfo(localAddress(req)) });
+  router.get('/System/Info', async (req: any, res: any) => {
+    const config = await loadConfig(req);
+    const packs = await badgePacksForConfig(config);
+    res.json({
+      ...systemInfo(serverIdFor(req.params.userUUID), baseFor(req)),
+      aiostreams: extensionInfo(localAddress(req), packs),
+    });
   });
 
   // Every user of a configuration signs in with its one password, so a session has

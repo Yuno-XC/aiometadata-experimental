@@ -28,13 +28,15 @@ const EXTENSIONS = {
   watchlistFavorites: 1,
 } as const;
 
-export function extensionInfo(origin: string): any {
+export function extensionInfo(origin: string, defaultBadgePacks: string[] = []): any {
   return {
     logo: process.env.ADDON_LOGO_URL?.trim() || `${origin}/logo.png`,
     configureUrl: `${origin}/configure`,
     pinSignIn: false,
     features: EXTENSIONS,
     version: { tag: `v${buildInfo.version}` },
+    // From the configured stream addon (AIOS System/Info). Clients must not hardcode packs.
+    defaultBadgePacks,
   };
 }
 
