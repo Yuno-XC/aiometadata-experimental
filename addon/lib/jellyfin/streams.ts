@@ -244,37 +244,67 @@ function requestHeadersOf(stream: any): Record<string, string> | null {
 }
 
 export function toPlayable(stream: any, allowHeaders = false): PlayableStream | null {
-  if (!stream || typeof stream.url !== 'string' || !stream.url) return null;
-  const headers = needsHeaders(stream);
-  if (headers && !allowHeaders) return null;
+  if (!stream) return null;
 
   const label = [stream.name, stream.title || stream.description]
     .filter(Boolean)
     .join('\n');
-
-  const size = Number(stream?.behaviorHints?.videoSize);
+  const size = Number(stream?.behaviorHints?.videoSize ?? stream?.streamData?.size);
   const id = mediaSourceIdFor(stream);
-  const filename = String(stream?.behaviorHints?.filename || '');
+  const filename = String(
+    stream?.behaviorHints?.filename
+      || stream?.streamData?.filename
+      || stream?.streamData?.torrent?.title
+      || ''
+  );
   const durationMs = Number.isFinite(Number(stream?.streamData?.duration)) && Number(stream.streamData.duration) > 0 ? Number(stream.streamData.duration) : null;
-  rememberIssued(id, stream.url, durationMs);
-
-  return {
+  const bitrate = Number.isFinite(Number(stream?.streamData?.bitrate)) && Number(stream.streamData.bitrate) > 0 ? Number(stream.streamData.bitrate) : null;
+  const common = {
     id,
-    url: stream.url,
     name: label || 'Stream',
     container: containerOf(stream),
     size: Number.isFinite(size) && size > 0 ? size : null,
     filename: filename || null,
     videoHash: typeof stream?.behaviorHints?.videoHash === 'string' && stream.behaviorHints.videoHash ? stream.behaviorHints.videoHash : null,
     durationMs,
-    bitrate: Number.isFinite(Number(stream?.streamData?.bitrate)) && Number(stream.streamData.bitrate) > 0 ? Number(stream.streamData.bitrate) : null,
+    bitrate,
     subtitles: streamSubtitleTracks(stream),
     parsed: stream?.streamData?.parsedFile && typeof stream.streamData.parsedFile === 'object' ? stream.streamData.parsedFile : undefined,
     title: String(stream.name || '').trim(),
     description: String(stream.title || stream.description || '').trim(),
     bingeGroup: typeof stream?.behaviorHints?.bingeGroup === 'string' && stream.behaviorHints.bingeGroup ? stream.behaviorHints.bingeGroup : null,
-    needsHeaders: headers,
-    requestHeaders: headers ? requestHeadersOf(stream) : null,
+  };
+
+  // HTTP(S) streams from debrid / proxy — playable by Jellyfin clients.
+  if (typeof stream.url === 'string' && stream.url) {
+    const headers = needsHeaders(stream);
+    if (headers && !allowHeaders) return null;
+    rememberIssued(id, stream.url, durationMs);
+    return {
+      ...common,
+      url: stream.url,
+      needsHeaders: headers,
+      requestHeaders: headers ? requestHeadersOf(stream) : null,
+    };
+  }
+
+  // P2P / magnet: list for the version picker + badge matching (AIOS formatter text).
+  // Path carries the release filename so badge packs (Fusion) can match.
+  const infoHash = typeof stream.infoHash === 'string' && stream.infoHash
+    ? stream.infoHash
+    : typeof stream?.streamData?.torrent?.infoHash === 'string'
+      ? stream.streamData.torrent.infoHash
+      : '';
+  if (!infoHash) return null;
+
+  const path = filename
+    ? `/p2p/${filename.replace(/^\/+/, '')}`
+    : `magnet:?xt=urn:btih:${infoHash}`;
+  return {
+    ...common,
+    url: path,
+    needsHeaders: false,
+    requestHeaders: null,
   };
 }
 
@@ -630,10 +660,12 @@ export function mediaSourceFor(
     Formats: [],
     RequiredHttpHeaders: playable.requestHeaders ?? {},
     // The first version takes its item's id, so this is the one that stays the same.
+    // Clients match Fusion/Kingsize badge packs against these fields (AIOS-style).
     aiostreams: {
       id: playable.id,
       name: playable.title || playable.name,
       description: playable.description,
+      ...(playable.filename ? { filename: playable.filename } : {}),
       ...(playable.bingeGroup ? { bingeGroup: playable.bingeGroup } : {}),
     },
     DefaultAudioStreamIndex: 1,
