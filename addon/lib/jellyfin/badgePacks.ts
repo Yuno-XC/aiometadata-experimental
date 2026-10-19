@@ -60,9 +60,11 @@ export async function badgePacksForConfig(config: any | null | undefined): Promi
   const cached = cache.get(infoUrl);
   if (cached) return cached;
 
+  // Keep this short — System/Info must not stall the whole Jellyfin handshake.
+  const timeoutMs = envInt('JELLYFIN_BADGE_PACK_TIMEOUT_MS', 2500, 250);
   try {
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), envInt('JELLYFIN_STREAM_TIMEOUT_MS', 15000, 1000));
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
     try {
       const response = await fetch(infoUrl, {
         headers: { accept: 'application/json' },
